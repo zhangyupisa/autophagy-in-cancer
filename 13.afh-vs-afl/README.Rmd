@@ -7,4 +7,4 @@ output: html_document
 
 # yy code
 
-
+GIPW for propensity score calculation.
