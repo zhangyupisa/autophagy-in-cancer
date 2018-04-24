@@ -8,3 +8,5 @@ output: html_document
 # yy code
 
 GIPW for propensity score calculation.
+
+Read and write data before change the default directory.
