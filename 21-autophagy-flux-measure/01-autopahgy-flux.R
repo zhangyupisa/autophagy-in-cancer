@@ -181,17 +181,31 @@ proteins %>%
   purrr::pwalk(.f = fn_protein_abundences)
 
 
-# p62 ---------------------------------------------------------------------
+# p62 correlation ---------------------------------------------------------
 
-rppa_expr %>% 
-  dplyr::filter(cancer_types != "PANCAN19") %>% 
+fn_p62_corr <- function(.s) {
+  p62_mtor_pi3k_score %>% 
+    dplyr::group_by(cancer_types) %>% 
+    dplyr::select(1, 2, rlang::UQ(.s), p62 = P62LCKLIGAND) %>% 
+    dplyr::do(
+      cor.test(
+        dplyr::pull(., p62),
+        dplyr::pull(., rlang::UQ(.s)),
+        method = "spearman"
+      ) %>% 
+        broom::tidy()
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(1,coef = estimate, pval = p.value) %>% 
+    dplyr::mutate(fdr = p.adjust(pval, method = "fdr")) %>% 
+    tibble::add_column(vs = glue::glue("p62_vs_{.s}"), .before = 1)
+}
+
+proteins[-12] %>% 
+  purrr::map(.f = fn_p62_corr) %>% 
+  dplyr::bind_rows() %>% 
   dplyr::mutate(
-    p62 = purrr::map(
-      .x = expr,
-      .f = function(.x) {
-        .x %>% 
-          # P62LCKLIGAND is SQSTM1
-          dplyr::filter(symbol == "P62LCKLIGAND")
-      }
-    )
-  )
+    vs = stringr::str_replace(vs, "p62_vs_", "")
+  ) %>% 
+  ggplot(aes(x = coef, -log10(pval))) + 
+  geom_point()
