@@ -181,31 +181,111 @@ proteins %>%
   purrr::pwalk(.f = fn_protein_abundences)
 
 
-# p62 correlation ---------------------------------------------------------
 
-fn_p62_corr <- function(.s) {
+# p62 correlates with protein across all cancer types ---------------------
+
+fn_p62_corr_all <- function(.s) {
   p62_mtor_pi3k_score %>% 
-    dplyr::group_by(cancer_types) %>% 
+    # dplyr::group_by(cancer_types) %>% 
     dplyr::select(1, 2, rlang::UQ(.s), p62 = P62LCKLIGAND) %>% 
     dplyr::do(
       cor.test(
         dplyr::pull(., p62),
         dplyr::pull(., rlang::UQ(.s)),
-        method = "spearman"
+        method = "pearson"
       ) %>% 
         broom::tidy()
     ) %>% 
-    dplyr::ungroup() %>% 
     dplyr::select(1,coef = estimate, pval = p.value) %>% 
     dplyr::mutate(fdr = p.adjust(pval, method = "fdr")) %>% 
-    tibble::add_column(vs = glue::glue("p62_vs_{.s}"), .before = 1)
+    tibble::add_column(vs = .s, .before = 1)
 }
 
 proteins[-12] %>% 
-  purrr::map(.f = fn_p62_corr) %>% 
-  dplyr::bind_rows() %>% 
-  dplyr::mutate(
-    vs = stringr::str_replace(vs, "p62_vs_", "")
-  ) %>% 
-  ggplot(aes(x = coef, -log10(pval))) + 
-  geom_point()
+  purrr::map(.f = fn_p62_corr_all) %>% 
+  dplyr::bind_rows() ->
+  p62_protein_corr_all
+
+p62_protein_corr_all$coef %>% quantile()
+
+# The correlation between p62 and other protein across cancer tpyes is not strong.
+
+
+
+
+# p62 correlates with protein in single cancer type -----------------------
+
+fn_p62_corr <- function(.s) {
+  p62_mtor_pi3k_score %>% 
+    dplyr::select(1,2, .s, p62 = P62LCKLIGAND) %>% 
+    dplyr::group_by(cancer_types) %>% 
+    dplyr::do(
+      cor.test(dplyr::pull(., p62), dplyr::pull(., .s), method = "pearson") %>% 
+        broom::tidy()
+    ) %>% 
+    dplyr::ungroup() %>% 
+    dplyr::select(cancer_types, coef = estimate, pval = p.value) %>% 
+    dplyr::mutate(fdr = p.adjust(pval, method = "fdr")) %>% 
+    tibble::add_column(vs = .s, .before = 1)
+}
+
+proteins[-12] %>% 
+  purrr::map(.f = fn_p62_corr) %>%
+  dplyr::bind_rows() -> 
+  p62_corr
+
+p62_corr %>% 
+  dplyr::filter(!vs %in% c("mtor_score", "pik_score")) %>%
+  dplyr::group_by(cancer_types) %>% 
+  dplyr::summarise(m = median(coef)) %>% 
+  dplyr::arrange(m) %>% 
+  dplyr::pull(cancer_types) -> 
+  cancer_rank
+
+p62_corr %>% 
+  dplyr::filter(!vs %in% c("mtor_score", "pik_score")) %>%
+  dplyr::group_by(vs) %>% 
+  dplyr::summarise(m = median(coef)) %>% 
+  dplyr::arrange(m) %>% 
+  dplyr::pull(vs) -> vs_type_rank
+
+p62_corr %>% 
+  # dplyr::filter(!vs_type %in% c("p62_vs_mtor_score", "p62_vs_pik_score")) %>%
+  dplyr::filter(pval < 0.05) %>% 
+  dplyr::mutate(pval = -log10(pval)) %>% 
+  dplyr::mutate(pval = ifelse(pval > 30, 30, pval)) %>% 
+  dplyr::mutate(coef = dplyr::case_when(
+    coef > 0.5 ~ 0.5,
+    coef < -0.5 ~ -0.5,
+    TRUE ~ coef
+  )) %>%
+  ggplot(aes(x = cancer_types, y = vs)) +
+  geom_point(aes(color = coef, size = pval)) +
+  scale_color_gradient2(
+    name = "Coef",
+    high = "red",
+    mid = "white",
+    low = "blue",
+    breaks = seq(-0.5,0.5,length.out = 5),
+    labels = c("=<-0.5", "-0.25", "0", "0.25", ">=0.5")
+  ) +
+  scale_size(name = "P-value") +
+  scale_x_discrete(limit = cancer_rank) +
+  scale_y_discrete(limit = c(vs_type_rank),
+                   labels = c(vs_type_rank %>% 
+                                stringr::str_replace( pattern = "p62_vs_", "") %>% 
+                                stringr::str_replace(pattern = "_", replacement = " ") %>% 
+                                stringr::str_replace(pattern = "ALPHA", "") %>% 
+                                stringr::str_replace(pattern = "BETA", "") %>% 
+                                stringr::str_replace(pattern = "^X", ""),
+                              "","mTOR score", "PI3K/AKT score"),
+                   expand = c(0.05,0.05)) +
+  ggthemes::theme_gdocs() +
+  theme(
+    axis.text.x = element_text(angle = 90),
+    axis.text.y = element_text(
+      
+    )
+  ) +
+  labs(x = "Cancer Types", y = "Proteins") -> 
+  p62_corr_protein
