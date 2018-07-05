@@ -174,11 +174,11 @@ fn_protein_abundences <- function(.n, .s) {
   )
 }
 
-proteins %>% 
-  dplyr::as_tibble() %>% 
-  tibble::rownames_to_column() %>% 
-  dplyr::rename(.n = rowname, .s = value) %>% 
-  purrr::pwalk(.f = fn_protein_abundences)
+# proteins %>% 
+#   dplyr::as_tibble() %>% 
+#   tibble::rownames_to_column() %>% 
+#   dplyr::rename(.n = rowname, .s = value) %>% 
+#   purrr::pwalk(.f = fn_protein_abundences)
 
 
 
@@ -186,7 +186,6 @@ proteins %>%
 
 fn_p62_corr_all <- function(.s) {
   p62_mtor_pi3k_score %>% 
-    # dplyr::group_by(cancer_types) %>% 
     dplyr::select(1, 2, rlang::UQ(.s), p62 = P62LCKLIGAND) %>% 
     dplyr::do(
       cor.test(
@@ -197,20 +196,18 @@ fn_p62_corr_all <- function(.s) {
         broom::tidy()
     ) %>% 
     dplyr::select(1,coef = estimate, pval = p.value) %>% 
-    dplyr::mutate(fdr = p.adjust(pval, method = "fdr")) %>% 
+    # dplyr::mutate(fdr = p.adjust(pval, method = "fdr")) %>% 
     tibble::add_column(vs = .s, .before = 1)
 }
 
-proteins[-12] %>% 
+proteins[-14] %>% 
   purrr::map(.f = fn_p62_corr_all) %>% 
   dplyr::bind_rows() ->
   p62_protein_corr_all
 
 p62_protein_corr_all$coef %>% quantile()
 
-# The correlation between p62 and other protein across cancer tpyes is not strong.
-
-
+# The correlation between p62 and other protein across cancer tpyes is not strong. it makes no sense to combine all the caner type to see the correlation
 
 
 # p62 correlates with all proteins ----------------------------------------
@@ -236,27 +233,28 @@ rppa_expr %>%
           dplyr::mutate(fdr = p.adjust(pval, method = "fdr"))
       }
     )
-  ) -> .p
-.p %>% 
+  ) %>% 
   dplyr::select(1,3) %>% 
-  tidyr::unnest() -> .pp
- 
+  tidyr::unnest() -> p62_corr_with_all_rppa_protein
 
-.pp %>% 
+p62_corr_with_all_rppa_protein %>% 
+  dplyr::filter(abs(coef) >= 0.3, pval < 0.05) ->
+  p62_corr_with_all_rppa_protein_sig
+
+p62_corr_with_all_rppa_protein_sig %>% 
   dplyr::group_by(cancer_types) %>% 
-  dplyr::summarise(m = median(coef)) %>% 
+  dplyr::summarise(m = sum(coef)) %>% 
   dplyr::arrange(m) %>% 
   dplyr::pull(cancer_types) -> 
   cancer_rank
 
-.pp %>% 
+p62_corr_with_all_rppa_protein_sig %>% 
   dplyr::group_by(protein) %>% 
-  dplyr::summarise(m = median(coef)) %>% 
+  dplyr::summarise(m = sum(coef)) %>% 
   dplyr::arrange(m) %>% 
   dplyr::pull(protein) -> vs_type_rank
 
-.pp %>% 
-  dplyr::filter(pval < 0.05) %>% 
+p62_corr_with_all_rppa_protein_sig %>% 
   dplyr::mutate(pval = -log10(pval)) %>% 
   dplyr::mutate(pval = ifelse(pval > 30, 30, pval)) %>% 
   dplyr::mutate(coef = dplyr::case_when(
@@ -283,19 +281,87 @@ rppa_expr %>%
                                 stringr::str_replace(pattern = "ALPHA", "") %>% 
                                 stringr::str_replace(pattern = "BETA", "") %>% 
                                 stringr::str_replace(pattern = "^X", ""),
-                              "","mTOR score", "PI3K/AKT score"),
-                   expand = c(0.05,0.05)) +
+                              "","mTOR score", "PI3K/AKT score")) +
   ggthemes::theme_gdocs() +
   theme(
-    axis.text.x = element_text(angle = 90),
-    axis.text.y = element_text(
-      
-    )
+    axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1)
   ) +
   labs(x = "Cancer Types", y = "Proteins") -> 
-  p62_a
+  plot_p62_all
 
-ggsave(filename = "p62-corr-with-all-protein.pdf", plot = p62_a, device = "pdf", path = path_out, width = 10, height = 20)
+ggsave(filename = "01-p62-corr-with-all-rppa-protein.pdf", plot = plot_p62_all, device = "pdf", path = path_out, width = 10, height = 20)
+
+
+# pi3k-akt ----------------------------------------------------------------
+
+# from cancer cell paper
+# AKT pS473, AKT pT308, GSK3 pS9,  GSK3 pS21-pS9, PRAS40 pT246 TSC2 pT1462
+PI3K_AKT <- "pS473|pT308|pS9|pS21S9|pT246|pT1462$" %>% stringr::str_replace_all(pattern = "\\|", replacement = "$\\|") 
+
+# mTOR pS2448, RICTOR pT1135, 4EBP1 pS65, 4EBP1 pT37T46, 4EBP1 pT70, S6K pT389, S6 pS235S236, S6 pS240S244
+mTOR <- "pS2448|pT1135|pS65|pT37T46|pT70|pT389|pS235S236|pS240S244$" %>% stringr::str_replace_all(pattern = "\\|", replacement = "$\\|")
+
+# from cancer cell protein paper
+glue::glue("{PI3K_AKT}$|{mTOR}$|P62|BECLIN|BCL2|FOXO3A|RAPTOR|AMPKALPHA_pT172|AMPKALPHA|MTOR") -> PI3K_AKT_mTOR
+
+dot_plot <- function(.d, .c = 0, .p = 1) {
+  .d %>% 
+    dplyr::filter(abs(coef) > .c, pval < .p) ->
+    .d_sig
+  # rank for cancer and protein
+  .d_sig %>% 
+    dplyr::group_by(cancer_types) %>% 
+    dplyr::summarise(m = sum(coef)) %>% 
+    dplyr::arrange(m) %>% 
+    dplyr::pull(cancer_types) ->
+    .rank_cancer
+  .d_sig %>% 
+    dplyr::group_by(protein) %>% 
+    dplyr::summarise(m = sum(coef)) %>% 
+    dplyr::arrange(m) %>% 
+    dplyr::pull(protein) ->
+    .rank_protein
+  
+  .d_sig %>% 
+    dplyr::mutate(pval = -log10(pval)) %>% 
+    dplyr::mutate(pval = ifelse(pval > 30, 30, pval)) %>% 
+    dplyr::mutate(coef = dplyr::case_when(
+      coef > 0.5 ~ 0.5,
+      coef < -0.5 ~ -0.5,
+      TRUE ~ coef
+    )) %>%
+    ggplot(aes(x = cancer_types, y = protein)) +
+    geom_point(aes(color = coef, size = pval)) +
+    scale_color_gradient2(
+      name = "Coef",
+      high = "red",
+      mid = "white",
+      low = "blue",
+      breaks = seq(-0.7, 0.7,length.out = 5),
+      labels = c("=<-0.5", "-0.3", "0", "0.3", ">=0.5")
+    ) +
+    scale_size(name = "P-value") +
+    scale_x_discrete(limit = .rank_cancer) +
+    scale_y_discrete(limit = .rank_protein,
+                     labels = .rank_protein %>% 
+                                  stringr::str_replace( pattern = "p62_vs_", "") %>% 
+                                  stringr::str_replace(pattern = "_", replacement = " ") %>% 
+                                  stringr::str_replace(pattern = "ALPHA", "") %>% 
+                                  stringr::str_replace(pattern = "BETA", "") %>% 
+                                  stringr::str_replace(pattern = "^X", "")) +
+    ggthemes::theme_gdocs() +
+    theme(
+      axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
+    ) +
+    labs(x = "Cancer Types", y = "Proteins")
+}
+
+graphics.off()
+p62_corr_with_all_rppa_protein %>% 
+  dplyr::filter(stringr::str_detect(protein, glue::glue("{mTOR}|BECLIN|BCL2|RAPTOR|MTOR|TSC1|TUBERIN"))) %>% 
+  dot_plot(.c = 0.3, .p = 0.05)
+  
+
 
 
 # p62 correlates with protein in single cancer type -----------------------
