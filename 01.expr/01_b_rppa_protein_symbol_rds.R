@@ -53,7 +53,7 @@ jsonlite::fromJSON(txt = rppa_json_url) %>%
 
 rds_url <- "https://github.com/chunjie-sam-liu/R_Leng_1/raw/master/autophagy_codes/01_expr/rppa_protein_name.rds"
 rppa_name <- 
-  tibble::tibble(protein = read_rds(path = url(rds_url))) %>% 
+  tibble::tibble(protein = readr::read_rds(path = url(rds_url))) %>% 
   dplyr::mutate(name = stringr::str_replace(protein, pattern = "-\\w-\\w$", "")) %>% 
   dplyr::mutate(name = stringr::str_to_upper(name)) %>% 
   dplyr::mutate(name = stringr::str_replace_all(name, pattern = "-|_", ""))

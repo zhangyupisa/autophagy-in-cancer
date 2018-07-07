@@ -17,7 +17,21 @@ rppa_expr <- readr::read_rds(path = file.path(path_data, "pancan33-rppa-expr-v4-
 rppa_name <- readr::read_rds(path = file.path(path_data, "rppa-name-symbol.rds.gz"))
 gene_list <- readr::read_rds(path = file.path(path_data, "rds-03-a-atg-lys-gene-list.rds.gz"))
 pcc <- readr::read_tsv(file = file.path(path_data, "PanCanAtlasTumors_color_coded_by_organ_system_20170302.tsv"))
+pathway_score <- readr::read_rds(path = file.path(path_data, "pancan32-rppa-score.rds.gz"))
 
+
+# p62 rppa expression ----------------------------------------------------------
+
+rppa_expr %>% 
+  dplyr::mutate(
+    p62 = purrr::map(
+      .x = expr, 
+      .f = function(.x) {
+        .x %>% dplyr::filter(protein == "P62LCKLIGAND") %>% dplyr::select(-1)
+      })
+  ) %>% 
+  dplyr::select(-2) ->
+  p62_rppa_expr
 
 # Regulators --------------------------------------------------------------
 # from cancer cell paper
@@ -360,7 +374,51 @@ graphics.off()
 p62_corr_with_all_rppa_protein %>% 
   dplyr::filter(stringr::str_detect(protein, glue::glue("{mTOR}|BECLIN|BCL2|RAPTOR|MTOR|TSC1|TUBERIN"))) %>% 
   dot_plot(.c = 0.3, .p = 0.05)
-  
+
+# wait for the pathway score.
+
+# p62 correlates with pathway score ---------------------------------------
+# p62 rppa expression correlates with the rppa score.
+
+p62_rppa_expr %>% 
+  dplyr::inner_join(pathway_score, by = "cancer_types") %>% 
+  dplyr::mutate(
+    corr = purrr::map2(
+      .x = p62,
+      .y = rppa,
+      .f = function(.x, .y) {
+        .x %>% 
+          tidyr::gather(key = barcode, value = p62, -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(barcode, 1, 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) %>% 
+          dplyr::ungroup() ->
+          .p62
+        .y %>% 
+          tidyr::spread(key = pathway, value = score) %>% 
+          dplyr::inner_join(.p62, by = "barcode") -> .d
+        
+        names(.d)[-1] -> .corrname
+        # combination with 2 elements
+        
+        combn(x = .corrname, m = 2, simplify = F) -> .corrcomb
+        .corrcomb %>% purrr::map(.f = function(.cn){
+          cor.test(x = .d[[.cn[1]]], y = .d[[.cn[2]]], method = "pearson") %>% 
+            broom::tidy() %>% 
+            dplyr::select(coef = estimate, pval = p.value) %>% 
+            tibble::add_column(vs = paste0(.cn, collapse = "#"), .before = 1) 
+        }) %>% 
+          dplyr::bind_rows() %>% 
+          dplyr::filter(grepl(pattern = "p62", x = vs))
+      }
+    )
+  ) %>% 
+  dplyr::select(cancer_types, corr) -> .te
+.te %>% 
+  tidyr::unnest() %>% 
+  dplyr::rename(protein = vs) %>% 
+  dot_plot()
 
 
 
