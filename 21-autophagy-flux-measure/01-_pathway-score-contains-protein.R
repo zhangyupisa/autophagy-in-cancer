@@ -54,7 +54,7 @@ tcpa_name %>% readr::write_rds(path = file.path(path_data, "tcpa-rppa-name.rds.g
 
 #pathways -------------------------------------------------------------------------------------
 # pi3kakt
-pi3kakt_pat <- c("Akt_", "GSK3.alpha.beta|GSK3_pS9", "p27_", "PRAS40_", "Tuberin_pT", "INPP4B", "PTEN")
+pi3kakt_pat <- c("Akt_", "GSK3", "p27", "PRAS40_", "Tuberin", "INPP4", "PTEN") %>% paste0(collapse = "|")
 pi3kakt_name <- c("AKT", "GSK", "p27", "PRAS40", "Tuberin_pT", "INPP4B", "PTEN")
 pi3kakt_type <- c("p", "p", "p", "p", "p", "n", "n")
 pi3kakt <- rep("PI3KAKT", length(pi3kakt_pat))
