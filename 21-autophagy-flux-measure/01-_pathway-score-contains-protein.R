@@ -55,72 +55,60 @@ tcpa_name %>% readr::write_rds(path = file.path(path_data, "tcpa-rppa-name.rds.g
 #pathways -------------------------------------------------------------------------------------
 # pi3kakt
 pi3kakt_pat <- c("Akt_", "GSK3", "p27", "PRAS40_", "Tuberin", "INPP4", "PTEN") %>% paste0(collapse = "|")
-pi3kakt_name <- c("AKT", "GSK", "p27", "PRAS40", "Tuberin_pT", "INPP4B", "PTEN")
-pi3kakt_type <- c("p", "p", "p", "p", "p", "n", "n")
-pi3kakt <- rep("PI3KAKT", length(pi3kakt_pat))
 
 # RASMAPK
-rasmapk_pat <- c("A.Raf_|c\\.Jun_pS73|C.Raf_|JNK_|MAPK_|MEK1_|p38_p|p90RSK_p|Shc_p|YB-1_p")
-rasmapk_name <- c("cj")
-rasmapk_type <- c("p")
-rasmapk <- c("RASMAPK")
+rasmapk_pat <- c("Raf|pS73|JNK|MAPK|MEK1|p38|p90RSK|Shc|YB")
 
 # RTK
-rtk_pat <- c("HER2_|HER3_|Ret_|Shc_p|Src_p", "EGFR_")
-rtk_name <- c("cj", "EGFR_")
-rtk_type <- c("p", "p")
-rtk <- c("RTK", "RTK")
+rtk_pat <- c("HER2|HER3|Ret|Shc|Src|^EGFR")
+
 
 # TSCmTOR
-tscmtor_pat <- c("4E.BP1_p|mTOR_|p70S6K_|Rictor_", "S6_")
-tscmtor_name <- c("cj", "pS6")
-tscmtor_type <- c("p", "p")
-tscmtor <- c("TSCmTOR", "TSCmTOR")
+tscmtor_pat <- c("^4E-BP1|mTOR|p70-S6K|Rictor|^S6")
 
 #Apoptosis 
-apoptosis_pat <- c("Bak|Bid|Bim|Caspase.|Bax", "Bcl.2|Bcl.xL|Bad_|cIAP")
-apoptosis_name <- c("cj", "n")
-apoptosis_type <- c("p", "n")
-apoptosis <- c("Apoptosis", "Apoptosis")
+apoptosis_pat <- c("Bak|Bid|Bim|Caspase-|Bax|Bcl2|Bcl-xL|Bad|cIAP")
 
 # Cell cycle
-cellcycle_pat <- c("CDK1|Cyclin|p27_|PCNA")
-cellcycle_name <- c("cj")
-cellcycle_type <- c("p")
-cellcycle <- c("CellCycle")
+cellcycle_pat <- c("CDK1|Cyclin|p27|PCNA")
 
 #DNA damage
-dnad_pat <- c("53BP1|ATM|BRCA2|Chk1_|Chk2_|Ku80|Mre11|PARP|Rad50|Rad51|XRCC1|p53")
-dnad_name <- c("cj")
-dnad_type <- c("p")
-dnad <- c("DNADamage")
+dnad_pat <- c("53BP1|ATM|BRCA2|Chk1|Chk2|Ku80|Mre11|PARP|Rad50|Rad51|XRCC1|^p53")
+
 
 # EMT 
-emt_pat <- c("Collagen|Fibronectin|N.Cadherin", "Claudin.7|E.Cadherin")
-emt_name <- c("cj", "cjl")
-emt_type <- c("p", "n")
-emt <- c("EMT", "EMT")
+emt_pat <- c("Collagen|Fibronectin|Cadherin|Claudin|E.Cadherin")
+
 
 # ER
-er_pat <- c("ER-|PR")
-er_name <- c("cj")
-er_type <- c("p")
-er <- c("Hormone ER")
+er_pat <- c("ER-|PR-")
+
 
 # AR
-ar_pat <- c("AR|INPP4B|GATA3|Bcl.2")
-ar_name <- c("cj")
-ar_type <- c("p")
-ar <- c("Hormone AR")
+ar_pat <- c("^AR-|INPP4B|GATA3|Bcl2")
+
+
+# protein list ------------------------------------------------------------
 
 
 path_way <-
   tibble::tibble(
-    pat = c(pi3kakt_pat, rasmapk_pat, rtk_pat, tscmtor_pat, apoptosis_pat, cellcycle_pat, dnad_pat, emt_pat, er_pat, ar_pat), 
-    name = c(pi3kakt_name, rasmapk_name, rtk_name, tscmtor_name, apoptosis_name, cellcycle_name, dnad_name, emt_name, er_name, ar_name),
-    type = c(pi3kakt_type, rasmapk_type, rtk_type, tscmtor_type, apoptosis_type, cellcycle_type, dnad_type, emt_type, er_type, ar_type),
-    pathway = c(pi3kakt, rasmapk, rtk, tscmtor, apoptosis, cellcycle, dnad, emt, er, ar)
+    pattern = c(pi3kakt_pat, rasmapk_pat, rtk_pat, tscmtor_pat, apoptosis_pat, cellcycle_pat, dnad_pat, emt_pat, er_pat, ar_pat),
+    pathway = c("PI3K/AKT", "RAS/MAPK", "RTK", "TSC/mTOR", "Apoptosis", "Cell Cycle", "DNA Damage Response", "EMT", "Hormone ER", "Hormone AR")
   )
 
-tcpa_name %>% 
-  dplyr::filter(stringr::str_detect(protein, pi3kakt_pat))
+path_way %>% 
+  dplyr::mutate(
+    gene_list = purrr::map(
+      .x = pattern,
+      .f = function(.x) {
+        tcpa_name %>% 
+          dplyr::filter(stringr::str_detect(string = protein, pattern = stringr::regex(.x, ignore_case = TRUE)))
+      }
+    )
+  ) %>% 
+  dplyr::select(2,3,1) -> 
+  pathway_gene_list
+pathway_gene_list %>% 
+  readr::write_rds(path = file.path(path_data, "tcga-pathway-gene-list.rds.gz"), compress = "gz")
+
