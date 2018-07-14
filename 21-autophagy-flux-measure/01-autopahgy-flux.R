@@ -97,11 +97,11 @@ p62_rppa_expr %>%
 
 human_read <- function(.x){
   if (.x > 0.1) {
-    .x %>% round(digits = 2) %>% toString()
+    .x %>% signif(digits = 2) %>% toString()
   } else if (.x < 0.1 && .x > 0.001 ) {
     .x %>% signif(digits = 1) %>% toString()
   } else {
-    .x %>% signif(digits = 2) %>% toString()
+    .x %>% format(digits = 2, scientific = TRUE)
   }
 }
 
@@ -110,6 +110,13 @@ p62_sqstm1_coef %>%
   tidyr::unnest() %>% 
   dplyr::mutate(sqstm1 = log2(sqstm1 + 1)) -> 
   p62_sqstm1_expr
+
+cor.test(p62_sqstm1_expr$p62, p62_sqstm1_expr$sqstm1, method = "spearman", exact = FALSE) %>% 
+  broom::tidy() %>% 
+  dplyr::select(ceof = estimate, pval = p.value) %>% 
+  unlist() -> 
+  p62_sqstm1_total_corr
+
 
 p62_sqstm1_coef %>% 
   dplyr::select(-2) %>% 
@@ -145,23 +152,209 @@ p62_sqstm1_expr %>%
   scale_color_manual(
     values = p62_sqstm1_coef_label$color, 
     limits = p62_sqstm1_coef_label$cancer_types,
-    labels = p62_sqstm1_coef_label$label,
-    name = ""
-  ) +
-  theme(
-    panel.background = element_rect(fill = "white", colour = "black")
+    labels = p62_sqstm1_coef_label$label
   ) +
   labs(
     x = "mRNA expression (log2)",
     y = "Protein expression",
-    title = "p62 protein vs. mRNA"
-  )
+    title = glue::glue("p62 protein vs. mRNA, R = {signif(p62_sqstm1_total_corr[1], digits = 2)}, p = {p62_sqstm1_total_corr[2]}")
+  ) +
+  theme(
+    # for panel
+    panel.background = element_rect(fill = "white", colour = "black", size = 1.3),
+    panel.grid = element_blank(),
+    
+    # for legend
+    legend.title = element_blank(),
+    
+    legend.background = element_rect(fill = "transparent", colour = "transparent"),
+    legend.margin = margin(t = 0, r = 0, b = 0, l = 0),
+    
+    legend.key = element_rect(fill = "transparent", colour = "transparent"),
+    legend.key.size = unit(x = 0.01, units = "npc"),
+    legend.text = element_text(size = rel(0.7), colour = "black"),
+    
+    legend.position = c(0.235, 0.75)
+  ) +
+  guides(colour = guide_legend(ncol = 2)) ->
+  plot_p62_sqstm1_expr
 
+ggsave(
+  filename = "02-p62-protein-vs-mrna.pdf", 
+  plot = plot_p62_sqstm1_expr, 
+  device = "pdf", 
+  path = path_out,
+  width = 7, height = 6.42
+)
+
+#
+#
+
+
+# sqstm1 correlation with atg5 and atg7 -----------------------------------
+# atg5 & atg7 becn1 lc3
+gene_set <- c("ATG5", "ATG7", "BECN1", "MAP1LC3A", "MAP1LC3B", "MAP1LC3C", "GABARAPL1", "GABARAPL2", "GABARAPL3", "LAMP2", "SQSTM1")
+mrna_expr %>% 
+  dplyr::mutate(
+    gene_expr = purrr::map(
+      .x = expr,
+      .f = function(.x) {
+        .x %>% 
+          dplyr::filter(symbol %in% gene_set) %>% 
+          dplyr::select(-2) -> .xx
+        # select tumor
+        names(.xx)[-1] -> .barcode
+        .barcode[substr(x = .barcode, start = 14, stop = 14) == 0] -> .tumor
+        
+        .xx %>% 
+          dplyr::select(1, .tumor) %>% 
+          tidyr::gather(key = "barcode", value = "expr", -symbol) %>% 
+          tidyr::spread(key = symbol, value = expr) %>% 
+          dplyr::filter_if(.predicate = is.numeric, .vars_predicate = dplyr::all_vars(. != 0)) 
+      }
+    )
+  ) %>% 
+  dplyr::select(-2) %>% 
+  tidyr::unnest() %>% 
+  dplyr::select(-2) -> 
+  genes_mrna_expr
+
+# total correlation
+combn(x = gene_set, m = 2, simplify = F) -> gene_set_comb
+
+gene_set_comb %>% 
+  purrr::map(
+    .f = function(.x, .d = genes_mrna_expr) {
+      cor.test(x = .d[[.x[1]]], y = .d[[.x[2]]], method = "pearson") %>% 
+        broom::tidy() %>% 
+        dplyr::select(coef = estimate, pval = p.value) %>% 
+        tibble::add_column(vs = paste0(.x, collapse = "#"), .before = 1)
+    }
+  ) %>% 
+  dplyr::bind_rows() %>% 
+  dplyr::arrange(-coef) ->
+  gene_set_total_corr
+
+gene_set_total_corr %>% 
+  dplyr::filter(grepl(pattern = "SQSTM1", x = vs)) %>%
+  dplyr::arrange(coef)
+
+# each cancer types
+genes_mrna_expr %>% 
+  dplyr::group_by(cancer_types) %>% 
+  dplyr::do(
+    gene_set_comb %>% 
+      purrr::map(
+        .f = function(.x, .d = .data) {
+          cor.test(x = .d[[.x[1]]], y = .d[[.x[2]]], method = "pearson") %>% 
+            broom::tidy() %>% 
+            dplyr::select(coef = estimate, pval = p.value) %>% 
+            tibble::add_column(vs = paste0(.x, collapse = "#"), .before = 1)
+        }
+      ) %>% 
+      dplyr::bind_rows()
+  ) %>% 
+  dplyr::ungroup() ->
+  gene_set_corr
+
+gene_set_corr %>% 
+  dplyr::filter(grepl(pattern = "SQSTM1", x = vs)) %>%
+  dplyr::mutate(vs = sub(pattern = "#SQSTM1", replacement = "", x = vs, fixed = TRUE)) %>% 
+  dplyr::rename(gene = vs) ->
+  gene_set_corr_sqstm1
+
+gene_set_corr_sqstm1 %>% 
+  dplyr::group_by(cancer_types) %>% 
+  dplyr::summarise(s = sum(coef)) %>% 
+  dplyr::arrange(s) %>% 
+  dplyr::pull(cancer_types) -> 
+  rank_cancer
+
+gene_set_corr_sqstm1 %>% 
+  dplyr::group_by(gene) %>% 
+  dplyr::summarise(s = sum(coef)) %>% 
+  dplyr::arrange(s) %>% 
+  dplyr::pull(gene) ->
+  rank_gene
+
+rank_gene <- rev(gene_set[-length(gene_set)])
+
+gene_set_corr_sqstm1 %>% 
+  dplyr::mutate(coef = ifelse(coef > 0.3, 0.3, coef)) %>%
+  dplyr::mutate(coef = ifelse(coef < -0.3, -0.3, coef)) %>% 
+  ggplot(aes(x = cancer_types, y = gene, fill = coef)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    breaks = round(seq(-0.3, 0.3,length.out = 5), digits = 2),
+    labels = format(seq(-0.3, 0.3,length.out = 5), digits = 2),
+    low = "#33cbfe",
+    mid = "#000000",
+    high = "#fdfe00"
+  ) +
+  scale_x_discrete(limits = rank_cancer) +
+  scale_y_discrete(limits = rank_gene) +
+  labs(
+    x = "",
+    y = "",
+    title = "p62 mRNA correlates with autophagy core genes."
+  ) +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    
+    # ticks
+    axis.ticks = element_blank(),
+    
+    # axis text
+    axis.text = element_text(size = 12, colour = "black"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    
+    # legend
+    
+    legend.position = "right"
+  ) +
+  guides(
+    fill = guide_legend(
+      # legend title
+      title = "Pearsons' correlation (r)",
+      title.position = "right",
+      title.theme = element_text(angle = -90, size = 10),
+      title.vjust = -0.3,
+      title.hjust = 0.7,
+      
+      # legend label
+      label.position = "left",
+      label.theme = element_text(size = 14),
+      
+      # legend key
+      keyheight = unit(x = 0.085, units = "npc"),
+      
+      reverse = TRUE
+    )
+  ) -> 
+  plot_gene_set_corr_sqstm1
+
+ggsave(
+  filename = "03-p62-mrna-correlates-with-autophagy-flux-core-gene.pdf",
+  plot = plot_gene_set_corr_sqstm1,
+  device = "pdf",
+  path = path_out,
+  width = 9.62, height = 3.47
+)
 
 #
 #
 
 # p62 correlates with pathway score ---------------------------------------
+
+# protein in the pathway
+pathway_gene_list %>% dplyr::filter(pathway %in% c("PI3K/AKT", "RAS/MAPK"))
+
+rppa_expr
+
+
+#
+#
 # p62 rppa expression correlates with the rppa score.
 
 p62_rppa_expr %>% 
@@ -187,20 +380,36 @@ p62_rppa_expr %>%
         # combination with 2 elements
         
         combn(x = .corrname, m = 2, simplify = F) -> .corrcomb
-        .corrcomb %>% purrr::map(.f = function(.cn){
+        .corrcomb %>% 
+          purrr::map(.f = function(.cn){
           cor.test(x = .d[[.cn[1]]], y = .d[[.cn[2]]], method = "pearson") %>% 
             broom::tidy() %>% 
             dplyr::select(coef = estimate, pval = p.value) %>% 
             tibble::add_column(vs = paste0(.cn, collapse = "#"), .before = 1) 
         }) %>% 
-          dplyr::bind_rows() %>% 
-          dplyr::filter(grepl(pattern = "p62", x = vs))
+          dplyr::bind_rows() 
       }
     )
   ) %>% 
   dplyr::select(cancer_types, corr) %>% 
-  tidyr::unnest() -> p62_pathway
+  tidyr::unnest() -> 
+  rppa_pathway_corr
 
+rppa_pathway_corr %>% 
+  dplyr::filter(grepl(pattern = "#p62", x = vs)) %>% 
+  dplyr::mutate(vs = sub(pattern = "#p62", replacement = "", x = vs)) ->
+  p62_pathway_corr
 
+p62_pathway_corr %>% 
+  dplyr::group_by(cancer_types) %>% 
+  dplyr::summarise(m = sum(coef)) %>% 
+  dplyr::arrange(m) %>% 
+  dplyr::pull(cancer_types) ->
+  rank_cancer
 
-
+p62_pathway_corr %>% 
+  dplyr::group_by(vs) %>% 
+  dplyr::summarise(m = sum(coef)) %>% 
+  dplyr::arrange(m) %>% 
+  dplyr::pull(vs) ->
+  rank_pathway
