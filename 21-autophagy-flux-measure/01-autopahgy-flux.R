@@ -350,7 +350,7 @@ ggsave(
 # protein in the pathway
 pathway_gene_list %>% dplyr::filter(pathway %in% c("PI3K/AKT", "RAS/MAPK"))
 
-rppa_expr
+
 
 
 #
@@ -395,9 +395,19 @@ p62_rppa_expr %>%
   tidyr::unnest() -> 
   rppa_pathway_corr
 
+# pathway name 
+pathway_name <- c(
+  "DNADamage" = "DNA Damage Response", 
+  "CellCycle" = "Cell Cycle", 
+  "TSCmTOR" = "TSC/mTOR",
+  "PI3KAKT" = "PI3K/AKT",
+  "RASMAPK" = "RAS/MAPK"
+  )
+
 rppa_pathway_corr %>% 
   dplyr::filter(grepl(pattern = "#p62", x = vs)) %>% 
-  dplyr::mutate(vs = sub(pattern = "#p62", replacement = "", x = vs)) ->
+  dplyr::mutate(vs = sub(pattern = "#p62", replacement = "", x = vs)) %>% 
+  dplyr::mutate(vs = plyr::revalue(x = vs, replace = pathway_name, warn_missing = F)) ->
   p62_pathway_corr
 
 p62_pathway_corr %>% 
@@ -413,3 +423,68 @@ p62_pathway_corr %>%
   dplyr::arrange(m) %>% 
   dplyr::pull(vs) ->
   rank_pathway
+
+p62_pathway_corr %>% 
+  dplyr::mutate(coef = ifelse(coef > 0.5, 0.5, coef)) %>%
+  dplyr::mutate(coef = ifelse(coef < -0.5, -0.5, coef)) %>% 
+  ggplot(aes(x = cancer_types, y = vs, fill = coef)) +
+  geom_tile() +
+  scale_fill_gradient2(
+    breaks = round(seq(-0.5, 0.5,length.out = 5), digits = 2),
+    labels = format(seq(-0.5, 0.5,length.out = 5), digits = 2),
+    low = "#00fefe",
+    mid = "#000000",
+    high = "#fe0000"
+  ) +
+  scale_x_discrete(limits = rank_cancer) +
+  scale_y_discrete(limits = rank_pathway) +
+  labs(
+    x = "",
+    y = "",
+    title = "p62 protein expresion correlates with rppa score"
+  ) +
+  theme(
+    panel.background = element_blank(),
+    panel.grid = element_blank(),
+    
+    # ticks
+    axis.ticks = element_blank(),
+    
+    # axis text
+    axis.text = element_text(size = 12, colour = "black"),
+    axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+    
+    # legend
+    
+    legend.position = "right"
+  ) +
+  guides(
+    fill = guide_legend(
+      # legend title
+      title = "Pearsons' correlation (r)",
+      title.position = "right",
+      title.theme = element_text(angle = -90, size = 11),
+      title.vjust = -0.3,
+      title.hjust = 0.7,
+      
+      # legend label
+      label.position = "left",
+      label.theme = element_text(size = 12),
+      
+      # legend key
+      keyheight = unit(x = 0.08, units = "npc"),
+      
+      reverse = TRUE
+    )
+  ) -> 
+  plot_p62_pathway_corr
+
+ggsave(
+  filename = "04-p62-correlates-with-rppa-pathway.pdf",
+  plot = plot_p62_pathway_corr,
+  device = "pdf",
+  path = path_out,
+  width = 11.6, height = 3.87
+)
+##
+#
