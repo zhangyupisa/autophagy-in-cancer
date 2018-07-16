@@ -346,10 +346,23 @@ ggsave(
 #
 
 # p62 correlates with pathway score ---------------------------------------
-
+p62_rppa_expr
 # protein in the pathway
-pathway_gene_list %>% dplyr::filter(pathway %in% c("PI3K/AKT", "RAS/MAPK"))
-
+rppa_expr %>% 
+  dplyr::mutate(
+    rppa = purrr::map(
+      .x = expr,
+      .f = function(.x) {
+        pathway_gene_list %>% 
+          dplyr::select(-3) %>% 
+          tidyr::unnest() ->
+          .pathway_gene_list 
+        .pathway_gene_list %>% 
+          dplyr::mutate(protein = gsub("-R-C|-R-V|-M-C|-M-V|-R-E|-G-C|-R-E|-M-E","",protein))
+        .x
+      }
+    )
+  )
 
 
 
