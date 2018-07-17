@@ -644,3 +644,8 @@ the_pathway %>%
   )
 
 
+
+
+# p62 correlates with autophagy gsva --------------------------------------
+# after 02-tcga-autophagy-gsva-score.R save the gsva score data.
+
