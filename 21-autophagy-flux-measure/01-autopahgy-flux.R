@@ -1,4 +1,3 @@
-
 # Library -----------------------------------------------------------------
 
 library(magrittr)
@@ -148,6 +147,7 @@ p62_sqstm1_expr %>%
   dplyr::mutate(p62 = ifelse(p62 < -2, -2, p62)) %>%
   dplyr::mutate(p62 = ifelse(p62 > 7.5, 7.5, p62)) %>%
   ggplot(aes(y = p62, x = sqstm1, color = cancer_types)) +
+  # coord_fixed(ratio = 1)
   geom_point() +
   scale_color_manual(
     values = p62_sqstm1_coef_label$color, 
@@ -284,6 +284,7 @@ gene_set_corr_sqstm1 %>%
   dplyr::mutate(coef = ifelse(coef < -0.3, -0.3, coef)) %>% 
   ggplot(aes(x = cancer_types, y = gene, fill = coef)) +
   geom_tile() +
+  coord_fixed(ratio = 1) +
   scale_fill_gradient2(
     breaks = round(seq(-0.3, 0.3,length.out = 5), digits = 2),
     labels = format(seq(-0.3, 0.3,length.out = 5), digits = 2),
@@ -339,14 +340,13 @@ ggsave(
   plot = plot_gene_set_corr_sqstm1,
   device = "pdf",
   path = path_out,
-  width = 9.62, height = 3.47
+  width = 10
 )
 
 #
 #
 
 # p62 correlates with pathway score ---------------------------------------
-#
 # p62 rppa expression correlates with the rppa score. ----
 
 p62_rppa_expr %>% 
@@ -414,7 +414,7 @@ rank_cancer_pathway <- rank_cancer
 p62_pathway_corr %>% 
   dplyr::group_by(vs) %>% 
   dplyr::summarise(m = sum(coef)) %>% 
-  dplyr::arrange(m) %>% 
+  dplyr::arrange(-m) %>% 
   dplyr::pull(vs) ->
   rank_pathway
 
@@ -423,6 +423,7 @@ p62_pathway_corr %>%
   dplyr::mutate(coef = ifelse(coef < -0.5, -0.5, coef)) %>% 
   ggplot(aes(x = cancer_types, y = vs, fill = coef)) +
   geom_tile() +
+  coord_fixed(ratio = 1) +
   scale_fill_gradient2(
     breaks = round(seq(-0.5, 0.5,length.out = 5), digits = 2),
     labels = format(seq(-0.5, 0.5,length.out = 5), digits = 2),
@@ -478,7 +479,7 @@ ggsave(
   plot = plot_p62_pathway_corr,
   device = "pdf",
   path = path_out,
-  width = 11.6, height = 3.87
+  width = 10
 )
 ##
 #
