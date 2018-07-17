@@ -346,65 +346,6 @@ ggsave(
 #
 
 # p62 correlates with pathway score ---------------------------------------
-# protein in the pathway
-rppa_expr %>% 
-  dplyr::mutate(
-    rppa = purrr::map2(
-      .x = expr,
-      .y = cancer_types,
-      .f = function(.x, .y) {
-        print(.y)
-        pathway_gene_list %>% 
-          dplyr::select(-3) %>% 
-          tidyr::unnest() %>% 
-          dplyr::mutate(protein = gsub("-R-C|-R-V|-M-C|-M-V|-R-E|-G-C|-R-E|-M-E", "", protein)) %>% 
-          dplyr::mutate(protein = ifelse(startsWith(x = protein, prefix = "4"), glue::glue("X{protein}"), protein)) %>% 
-          dplyr::mutate(protein = ifelse(startsWith(x = protein, prefix = "5"), glue::glue("X{protein}"), protein)) %>% 
-          dplyr::mutate(pat = gsub(pattern = "-|_", replacement = "", x = protein) %>% tolower()) %>% 
-          # c("retpy905", "caspase9", "parp1", "parpab3")
-          dplyr::filter(!pat %in% c("retpy905", "caspase9", "parp1", "parpab3")) %>% 
-          dplyr::select(pathway, pat) ->
-          .pathway_gene_list
-        
-        .x %>% tibble::add_column(pat = gsub(pattern = "-|_", replacement = "", x = .x$protein) %>% tolower(), .before = 3) -> .xx
-        .xx %>% dplyr::filter(protein == "P62LCKLIGAND") -> .p62
-        # setdiff(.pathway_gene_list$pat, .xx$pat)
-        
-        .xx %>% dplyr::filter(pat %in% .pathway_gene_list$pat) -> .d
-        
-        .d %>% 
-          dplyr::bind_rows(.p62) %>% 
-          dplyr::select(-symbol, -protein) %>% 
-          tidyr::gather(key = "barcode", value = "rppa", -pat) %>% 
-          tidyr::spread(key = pat, value = rppa) -> 
-          .dd
-        
-        .d$pat %>% sort() %>% unique() %>% purrr::map(.f = function(.x) {c(.x, "p62lckligand")}) -> .corrcomb
-        
-        .corrcomb %>% 
-          purrr::map(.f = function(.cn){
-            cor.test(x = .dd[[.cn[1]]], y = .dd[[.cn[2]]], method = "pearson") %>% 
-              broom::tidy() %>% 
-              dplyr::select(coef = estimate, pval = p.value) %>% 
-              tibble::add_column(pat = paste0(.cn, collapse = "#"), .before = 1)
-        }) %>% 
-          dplyr::bind_rows() %>% 
-          dplyr::mutate(pat = sub(pattern = "#p62lckligand", replacement = "", x = pat)) ->
-          .corr
-        
-        .pathway_gene_list %>% 
-          dplyr::inner_join(.xx, by = "pat") %>% 
-          dplyr::select(pathway, pat, protein) %>% 
-          dplyr::inner_join(.corr, by = "pat") %>% 
-          dplyr::select(-pat)
-      }
-    )
-  ) ->
-  p62_protein_pathway_corr
-
-
-
-#
 #
 # p62 rppa expression correlates with the rppa score. ----
 
@@ -433,11 +374,11 @@ p62_rppa_expr %>%
         combn(x = .corrname, m = 2, simplify = F) -> .corrcomb
         .corrcomb %>% 
           purrr::map(.f = function(.cn){
-          cor.test(x = .d[[.cn[1]]], y = .d[[.cn[2]]], method = "pearson") %>% 
-            broom::tidy() %>% 
-            dplyr::select(coef = estimate, pval = p.value) %>% 
-            tibble::add_column(vs = paste0(.cn, collapse = "#"), .before = 1) 
-        }) %>% 
+            cor.test(x = .d[[.cn[1]]], y = .d[[.cn[2]]], method = "pearson") %>% 
+              broom::tidy() %>% 
+              dplyr::select(coef = estimate, pval = p.value) %>% 
+              tibble::add_column(vs = paste0(.cn, collapse = "#"), .before = 1) 
+          }) %>% 
           dplyr::bind_rows() 
       }
     )
@@ -453,7 +394,7 @@ pathway_name <- c(
   "TSCmTOR" = "TSC/mTOR",
   "PI3KAKT" = "PI3K/AKT",
   "RASMAPK" = "RAS/MAPK"
-  )
+)
 
 rppa_pathway_corr %>% 
   dplyr::filter(grepl(pattern = "#p62", x = vs)) %>% 
@@ -467,6 +408,8 @@ p62_pathway_corr %>%
   dplyr::arrange(m) %>% 
   dplyr::pull(cancer_types) ->
   rank_cancer
+
+rank_cancer_pathway <- rank_cancer
 
 p62_pathway_corr %>% 
   dplyr::group_by(vs) %>% 
@@ -539,3 +482,164 @@ ggsave(
 )
 ##
 #
+
+# protein in the pathway -----
+rppa_expr %>% 
+  dplyr::mutate(
+    rppa = purrr::map2(
+      .x = expr,
+      .y = cancer_types,
+      .f = function(.x, .y) {
+        print(.y)
+        pathway_gene_list %>% 
+          dplyr::select(-3) %>% 
+          tidyr::unnest() %>% 
+          dplyr::mutate(protein = gsub("-R-C|-R-V|-M-C|-M-V|-R-E|-G-C|-R-E|-M-E", "", protein)) %>% 
+          dplyr::mutate(protein = ifelse(startsWith(x = protein, prefix = "4"), glue::glue("X{protein}"), protein)) %>% 
+          dplyr::mutate(protein = ifelse(startsWith(x = protein, prefix = "5"), glue::glue("X{protein}"), protein)) %>% 
+          dplyr::mutate(pat = gsub(pattern = "-|_", replacement = "", x = protein) %>% tolower()) %>% 
+          # c("retpy905", "caspase9", "parp1", "parpab3")
+          dplyr::filter(!pat %in% c("retpy905", "caspase9", "parp1", "parpab3")) %>% 
+          dplyr::select(pathway, pat) ->
+          .pathway_gene_list
+        
+        .x %>% tibble::add_column(pat = gsub(pattern = "-|_", replacement = "", x = .x$protein) %>% tolower(), .before = 3) -> .xx
+        .xx %>% dplyr::filter(protein == "P62LCKLIGAND") -> .p62
+        # setdiff(.pathway_gene_list$pat, .xx$pat)
+        
+        .xx %>% dplyr::filter(pat %in% .pathway_gene_list$pat) -> .d
+        
+        .d %>% 
+          dplyr::bind_rows(.p62) %>% 
+          dplyr::select(-symbol, -protein) %>% 
+          tidyr::gather(key = "barcode", value = "rppa", -pat) %>% 
+          tidyr::spread(key = pat, value = rppa) -> 
+          .dd
+        
+        .d$pat %>% sort() %>% unique() %>% purrr::map(.f = function(.x) {c(.x, "p62lckligand")}) -> .corrcomb
+        
+        .corrcomb %>% 
+          purrr::map(.f = function(.cn){
+            cor.test(x = .dd[[.cn[1]]], y = .dd[[.cn[2]]], method = "pearson") %>% 
+              broom::tidy() %>% 
+              dplyr::select(coef = estimate, pval = p.value) %>% 
+              tibble::add_column(pat = paste0(.cn, collapse = "#"), .before = 1)
+        }) %>% 
+          dplyr::bind_rows() %>% 
+          dplyr::mutate(pat = sub(pattern = "#p62lckligand", replacement = "", x = pat)) ->
+          .corr
+        
+        .pathway_gene_list %>% 
+          dplyr::inner_join(.xx, by = "pat") %>% 
+          dplyr::select(pathway, pat, protein) %>% 
+          dplyr::inner_join(.corr, by = "pat") %>% 
+          dplyr::select(-pat)
+      }
+    )
+  ) ->
+  p62_protein_pathway_corr
+
+p62_protein_pathway_corr %>% 
+  dplyr::select(-expr) %>% 
+  tidyr::unnest() ->
+  p62_protein_pathway_corr_p
+
+
+the_pathway <- c("PI3K/AKT", "RAS/MAPK", "RTK", "TSC/mTOR", "EMT")
+
+the_pathway %>% 
+  purrr::map(
+    .f = function(.x) {
+      
+      p62_protein_pathway_corr_p %>% 
+        dplyr::filter(pathway == .x) ->
+        .path
+      
+      # .path %>% 
+      #   dplyr::group_by(cancer_types) %>% 
+      #   dplyr::summarise(m = sum(coef)) %>% 
+      #   dplyr::arrange(m) %>% 
+      #   dplyr::pull(cancer_types) ->
+      #   rank_cancer
+      
+      .path %>% 
+        dplyr::group_by(protein) %>% 
+        dplyr::summarise(m = sum(coef)) %>% 
+        dplyr::arrange(m) %>% 
+        dplyr::pull(protein) ->
+        rank_protein
+      
+      .path %>% 
+        dplyr::mutate(
+          coef = dplyr::case_when(
+            coef > 0.5 ~ 0.5,
+            coef < -0.5 ~ -0.5,
+            TRUE ~ coef
+          )
+        ) %>% 
+        ggplot(aes(x = cancer_types, y = protein, fill = coef)) +
+        geom_tile() +
+        coord_fixed(ratio = 1) +
+        scale_fill_gradient2(
+          breaks = round(seq(-0.5, 0.5,length.out = 5), digits = 2),
+          labels = format(seq(-0.5, 0.5,length.out = 5), digits = 2),
+          low = "#00fefe", # 1cb5e2, 33cbfe, 00fefe
+          mid = "#000000",
+          high = "#fe0000" # fdfe00, fe00fe, fe0000
+        ) +
+        scale_x_discrete(limits = rank_cancer_pathway) +
+        scale_y_discrete(limits = rank_protein, labels = gsub(pattern = "_", replacement = " ", x = rank_protein)) +
+        labs(
+          x = "",
+          y = "",
+          title = glue::glue("p62 correlates with {.x} pathway proteins")
+        ) +
+        theme(
+          panel.background = element_blank(),
+          panel.grid = element_blank(),
+          
+          # ticks
+          axis.ticks = element_blank(),
+          
+          # axis text
+          axis.text = element_text(size = 12, colour = "black"),
+          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1),
+          
+          # legend
+          
+          legend.position = "right"
+        ) +
+        guides(
+          fill = guide_legend(
+            # legend title
+            title = "Pearsons' correlation (r)",
+            title.position = "right",
+            title.theme = element_text(angle = -90, size = 11),
+            title.vjust = -0.3,
+            title.hjust = 0.7,
+            
+            # legend label
+            label.position = "left",
+            label.theme = element_text(size = 12),
+            
+            # legend key
+            keyheight = unit(x = 0.08, units = "npc"),
+            
+            reverse = TRUE
+          )
+        ) -> 
+        .plot
+      .filename <- glue::glue("{sub(pattern = '/', replacement = '-', x = .x)}-protein-p62-correlation.pdf")
+      .path_plot_pathway <- file.path(path_out, "02-p62-correlates-with-pathway-protein")
+      if (!dir.exists(.path_plot_pathway)) dir.create(path = .path_plot_pathway)
+      ggsave(
+        filename = .filename,
+        plot = .plot,
+        device = "pdf",
+        path = .path_plot_pathway,
+        width = 10
+      )
+    }
+  )
+
+
