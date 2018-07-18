@@ -115,7 +115,7 @@ p62_clinical_nest %>%
       
       .dd %>% dplyr::filter(group != "M") -> .d
       
-      survival::coxph(survival::Surv(time, status) ~ rppa, data = .d) -> .cox
+      survival::coxph(survival::Surv(time, status) ~ rppa, data = .d) %>% 
         broom::tidy() %>% 
         dplyr::mutate(hazard_ratio = exp(estimate)) %>% 
         dplyr::select(hazard_ratio, coxp = p.value) -> .hazard_coxp
