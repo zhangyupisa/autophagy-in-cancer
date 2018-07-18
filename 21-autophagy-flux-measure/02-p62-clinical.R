@@ -163,28 +163,60 @@ p62_survival %>%
           dplyr::select(hazard_ratio, coxp = p.value) -> 
           .hazard_coxp
         
+        survival::survdiff(survival::Surv(time, status) ~ group, data = .d) -> .diff
+        .kmp <- 1 - pchisq(.diff$chisq, df = length(levels(as.factor(.d$group))) - 1)
         
-        survival::survdiff(survival::Surv(time, status) ~ group, data = .d) -> .d_diff
-        kmp <- 1 - pchisq(.d_diff$chisq, df = length(levels(as.factor(.d$group))) - 1)
-        
-        survival::survfit(survival::Surv(time, status) ~ group, data = .d , na.action = na.exclude) -> fit_x
+        survival::survfit(survival::Surv(time, status) ~ group, data = .d , na.action = na.exclude) -> .fit
         
         CPCOLS <- c("#CD0000", "#000080")
-        survminer::ggsurvplot(fit_x, 
-                              data = .d, 
-                              xlab = "Survival in months",
-                              ylab = 'Probability of survival',
-                              palette = CPCOLS,
-                              ggtheme = theme_bw()) -> .p
+        survminer::ggsurvplot(
+          .fit, data = .d, 
+          # pval = TRUE, pval.method = T,
+          xlab = "Survival in months", ylab = 'Probability of survival',
+          palette = CPCOLS, ggtheme = theme_bw()
+          ) -> 
+          .plot
         
-        .label <- glue::glue("{.y}
-                           p = {signif(kmp, 2)}")
+        .label <- glue::glue("{.x} 
+                             Log-rank p = {signif(.kmp, 2)}")
+        .plot$plot +
+          annotate(
+            "text", 
+            x = ifelse(.x == "GBM", 40, 10), 
+            y = ifelse(.x == "GBM", 0.8, 0.2), 
+            label = .label
+            ) + 
+          theme(
+            legend.position = "",
+            panel.grid = element_blank()
+            ) ->
+          .plot_label
         
+        tibble::tibble(
+          hazard_ratio = .hazard_coxp$hazard_ratio,
+          coxp = .hazard_coxp$coxp,
+          kmp = .kmp,
+          plot = list(.plot_label)
+        )
       }
     )
+  ) %>% 
+  dplyr::select(-survival) %>% 
+  tidyr::unnest() ->
+  p62_coxp_kmp_plot
+
+gridExtra::arrangeGrob(
+  grobs = p62_coxp_kmp_plot %>% dplyr::filter(kmp < 0.05) %>% .$plot, 
+  nrow = 2
+  ) %>% 
+  ggsave(
+    filename = "06-p62-cancer-type-survival.pdf",
+    plot = .,
+    device = "pdf", 
+    width = 17,
+    height = 8,
+    path = path_out
   )
-
-
 
 #
 #
