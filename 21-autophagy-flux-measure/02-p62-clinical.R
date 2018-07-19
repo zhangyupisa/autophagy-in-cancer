@@ -182,8 +182,8 @@ p62_survival %>%
         .plot$plot +
           annotate(
             "text", 
-            x = ifelse(.x == "GBM", 40, 10), 
-            y = ifelse(.x == "GBM", 0.8, 0.2), 
+            x = ifelse(.x == "GBM", 45, 15), 
+            y = ifelse(.x == "GBM", 0.75, 0.2), 
             label = .label
             ) + 
           theme(
@@ -212,7 +212,7 @@ gridExtra::arrangeGrob(
   ggsave(
     filename = "06-p62-cancer-type-survival.pdf",
     plot = .,
-    device = "pdf", 
+    device = "pdf",
     width = 17,
     height = 8,
     path = path_out
@@ -222,6 +222,6 @@ gridExtra::arrangeGrob(
 #
 # end  --------------------------------------------------------------------
 
-
+   
 
 
