@@ -187,7 +187,13 @@ p62_survival %>%
             label = .label
             ) + 
           theme(
-            legend.position = "",
+            legend.position = "none",
+            # legend.title = element_blank(),
+            # legend.background = element_rect(colour = "black", fill = "transparent"),
+            # legend.margin = margin(t = 0, r = 0, b = 0, l = 0, unit = "pt"),
+            # legend.key = element_rect(colour = "black", fill = "transparent"),
+            axis.title = element_blank(),
+            
             panel.grid = element_blank()
             ) ->
           .plot_label
@@ -207,7 +213,7 @@ p62_survival %>%
 
 gridExtra::arrangeGrob(
   grobs = p62_coxp_kmp_plot %>% dplyr::filter(kmp < 0.05) %>% .$plot, 
-  nrow = 2
+  nrow = 2, bottom = "Survival in months", left = "Probability of survival"
   ) %>% 
   ggsave(
     filename = "06-p62-cancer-type-survival.pdf",
@@ -222,6 +228,9 @@ gridExtra::arrangeGrob(
 #
 # end  --------------------------------------------------------------------
 
-   
+
+
+# stage info for the p62 --------------------------------------------------
+
 
 
