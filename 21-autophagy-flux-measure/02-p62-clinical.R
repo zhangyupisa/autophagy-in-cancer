@@ -440,6 +440,134 @@ gridExtra::arrangeGrob(
 
 
 
+# subtypes ----------------------------------------------------------------
+# pancan34-clinical-subtype.rds.gz
+subtype <- readr::read_rds(path = file.path(path_data, "pancan34-clinical-subtype.rds.gz")) %>% 
+  dplyr::select(-n)
+
+
+p62_rppa_expr %>% 
+  dplyr::inner_join(subtype, by = "cancer_types") %>% 
+  dplyr::mutate(
+    p62_subtype = purrr::pmap(
+      .l = .,
+      .f = function(cancer_types, p62, subtype) {
+        .x <- p62
+        .y <- subtype
+        .z <- cancer_types
+        print(.z)
+        
+        .x %>% 
+          tidyr::gather(key = "barcode", value = "p62", -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) %>% 
+          dplyr::inner_join(.y, by = "barcode") %>% 
+          dplyr::select(barcode, p62, subtype) %>% 
+          tidyr::drop_na()  ->
+          .d
+        
+        .d %>% 
+          dplyr::group_by(subtype) %>% 
+          dplyr::mutate(l = n() >= 10) -> 
+          .ds
+        
+        .ds$subtype %>% unique() %>% length() -> .ns
+        
+        .ds$subtype %>% unique() %>% sort() -> .lev
+        
+        if (!all(.ds$l) || .ns < 2) return(tibble::tibble(pval = NA, plot = list(NA)))
+        
+        # .ns == 2 t.test, .ns > 2 anova
+        if (.ns == 2) {
+          t.test(p62 ~ subtype, .d) %>% 
+            broom::tidy() %>% 
+            dplyr::pull(p.value) ->
+            .pval
+          
+          .d %>% 
+            ggpubr::ggboxplot(x = "subtype", y = "p62",  color = "subtype", pallete = "jco", add = "jitter") +
+            ggpubr::stat_compare_means(
+              method = "t.test", 
+              label.x = 1,
+              label.y = max(.d$p62) + 2.5, 
+              aes(label = paste0(.z, ", T-test, p = ", ..p.format..))
+            ) +
+            scale_color_brewer(palette = "Set1") +
+            theme(
+              text = element_text(family = "serif"),
+              
+              panel.background = element_rect(fill = "white", colour = "black", size = 1),
+              axis.title = element_blank(),
+              axis.line = element_blank(),
+              
+              legend.position = "none"
+            ) ->
+            .plot
+          
+          tibble::tibble(
+            pval = .pval,
+            plot = list(.plot)
+          )
+        } else {
+          oneway.test(p62 ~ subtype, .d) %>% 
+            broom::tidy() %>% 
+            dplyr::pull(p.value) -> 
+            .pval
+          
+          .comp_list <- .lev %>% combn(m = 2, simplify = F)
+          .d %>% dplyr::mutate(p62 = ifelse(p62 > 4, 4, p62)) -> .d
+          .d %>% 
+            dplyr::mutate(subtype = factor(subtype, levels = .lev)) %>% 
+            ggpubr::ggboxplot(x = "subtype", y = "p62",  color = "subtype", pallete = "jco", add = "jitter") +
+            ggpubr::stat_compare_means(comparisons = .comp_list, method = "t.test") + 
+            ggpubr::stat_compare_means(
+              method = "anova", 
+              label.x = 1,
+              label.y = max(.d$p62) + 5, 
+              aes(label = paste0(.z, ", Anova, p = ", ..p.format..))
+              ) +
+            scale_color_brewer(palette = "Set1") +
+            theme(
+              text = element_text(family = "serif"),
+              
+              panel.background = element_rect(fill = "white", colour = "black", size = 1),
+              axis.title = element_blank(),
+              axis.line = element_blank(),
+              axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+              
+              legend.position = "none"
+            ) ->
+            .plot
+          
+          tibble::tibble(
+            pval = .pval,
+            plot = list(.plot)
+          )
+        }
+        # ggpubr plot
+      }
+    )
+  ) %>% 
+  dplyr::select(1, 4) %>% 
+  tidyr::unnest() -> 
+  p62_subtype
+
+gridExtra::arrangeGrob(
+  grobs = p62_subtype %>% dplyr::filter(pval < 0.05) %>% .$plot, 
+  nrow = 2, bottom = "Subtype", left = "p62 protein expression"
+  ) %>% 
+  ggsave(
+    filename = "09-p62-cancer-type-subtype.pdf",
+    plot = .,
+    device = "pdf",
+    width = 11,
+    height = 10,
+    path = path_out
+  )
+
+
 #
 #
 # end  --------------------------------------------------------------------
