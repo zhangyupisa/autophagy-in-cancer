@@ -39,7 +39,7 @@ rppa_expr %>%
       })
   ) %>% 
   dplyr::select(-2) ->
-  p62_rppa_expr
+  D
 
 # merge p62 expr with survival data
 clinical %>% 
@@ -187,6 +187,7 @@ p62_survival %>%
             label = .label
             ) + 
           theme(
+            text = element_text(family = "serif"),
             legend.position = "none",
             # legend.title = element_blank(),
             # legend.background = element_rect(colour = "black", fill = "transparent"),
@@ -224,13 +225,221 @@ gridExtra::arrangeGrob(
     path = path_out
   )
 
-#
-#
-# end  --------------------------------------------------------------------
-
-
 
 # stage info for the p62 --------------------------------------------------
 
 
+# load stage data ---------------------------------------------------------
+# pancan34-clinical-stage.rds.gz
+stage <- readr::read_rds(path = file.path(path_data, "pancan34-clinical-stage.rds.gz")) %>% 
+  dplyr::filter(n >= 40) %>% 
+  dplyr::select(-n)
+# each stage has 10 samples at least.
 
+p62_rppa_expr %>% 
+  dplyr::inner_join(stage, by = "cancer_types") %>% 
+  dplyr::mutate(
+    p62_gender = purrr::pmap(
+      .l = .,
+      .f = function(cancer_types, p62, stage) {
+        .x <- p62
+        .y <- stage
+        .z <- cancer_types
+        
+        .x %>% 
+          tidyr::gather(key = "barcode", value = "p62", -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) %>% 
+          dplyr::inner_join(.y, by = "barcode") %>% 
+          dplyr::select(barcode, p62, stage) %>% 
+          tidyr::drop_na() %>% 
+          dplyr::mutate(p62 = ifelse(p62 > 4, 4, p62)) ->
+          .d
+        
+        .comp_list <- list(c("Stage I", "Stage II"), c("Stage II", "Stage III"), c("Stage III", "Stage IV"))
+        
+        .d %>% 
+          dplyr::arrange(stage) %>% 
+          ggpubr::ggboxplot(x = "stage", y = "p62",  color = "stage", pallete = "jco", add = "jitter") +
+          ggpubr::stat_compare_means(comparisons = .comp_list, method = "wilcox.test") + 
+          ggpubr::stat_compare_means(
+            method = "kruskal.test", 
+            label.x = 1.6,
+            label.y = max(.d$p62) + 2.5, 
+            aes(label = paste0(.z, ", Kruskal-Wallis, p = ", ..p.format..))
+          ) +
+          scale_color_brewer(palette = "Set1") +
+          theme(
+            text = element_text(family = "serif"),
+            
+            panel.background = element_rect(fill = "white", colour = "black", size = 1),
+            axis.title = element_blank(),
+            axis.line = element_blank(),
+            axis.text.x = element_text(angle = 45, hjust = 1, vjust = 1),
+            
+            legend.position = "none"
+          ) ->
+          .plot
+        
+        kruskal.test(p62 ~ as.factor(stage), data = .d) %>% 
+          broom::tidy() %>% 
+          dplyr::pull(p.value) ->
+          .pval
+        
+        tibble::tibble(
+          pval = .pval,
+          plot = list(.plot)
+        )
+      }
+    )
+  ) %>% 
+  dplyr::select(1, 4) %>% 
+  tidyr::unnest() ->
+  p62_stage
+
+gridExtra::arrangeGrob(
+  grobs = p62_stage %>% dplyr::filter(pval < 0.05) %>% .$plot, 
+  nrow = 2, bottom = "Stage", left = "p62 protein expression"
+  ) %>% 
+  ggsave(
+    filename = "07-p62-cancer-type-stage.pdf",
+    plot = .,
+    device = "pdf",
+    width = 7,
+    height = 7,
+    path = path_out
+  )
+
+
+# gender ------------------------------------------------------------------
+# pancan34-clinical.rds.gz
+clinical_gender <- readr::read_rds(path = file.path(path_data, "pancan34-clinical.rds.gz"))
+clinical_gender %>% 
+  dplyr::mutate(
+    gender = purrr::map(
+      .x = clinical,
+      .f = function(.x) {
+        .x %>% 
+          dplyr::select(barcode, gender) %>% 
+          tidyr::drop_na(gender) %>% 
+          dplyr::distinct() 
+      }
+    )
+  ) %>% 
+  dplyr::select(-clinical) %>% 
+  dplyr::mutate(
+    n = purrr::map(
+      .x = gender,
+      .f = function(.x) {
+        .x$gender %>% table() -> .t
+        tibble::tibble(
+          F_n = ifelse(is.na(.t['FEMALE']), 0, .t['FEMALE']),
+          M_n = ifelse(is.na(.t['MALE']), 0, .t['MALE'])
+        )
+      }
+    )
+  ) %>% 
+  tidyr::unnest(n) ->
+  gender
+
+if (!file.exists(file.path(path_data, "pancan34-clinical-gender.rds.gz"))) 
+  readr::write_rds(x = gender, path = file.path(path_data, "pancan34-clinical-gender.rds.gz"), compress = "gz")
+
+# load gender data
+readr::read_rds(path = file.path(path_data, "pancan34-clinical-gender.rds.gz")) %>% 
+  dplyr::filter_if(.predicate = is.double, .vars_predicate = dplyr::all_vars(. > 10)) %>% 
+  dplyr::select(1, 2) ->
+  gender
+
+p62_rppa_expr %>% 
+  dplyr::inner_join(gender, by = "cancer_types") %>% 
+  dplyr::mutate(
+    p62_gender = purrr::pmap(
+      .l = .,
+      .f = function(cancer_types, p62, gender) {
+        .x <- p62
+        .y <- gender
+        .z <- cancer_types
+        
+        print(.z)
+        .x %>% 
+          tidyr::gather(key = "barcode", value = "p62", -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) %>% 
+          dplyr::inner_join(.y, by = "barcode") %>% 
+          tidyr::drop_na() %>% 
+          dplyr::mutate(gender = factor(x = gender, levels = c("FEMALE", "MALE"))) ->
+          .d
+        
+        .d$gender %>% table() %>% as.numeric() -> .dg
+        
+        if (gtools::invalid(.dg) || any(.dg < c(10, 10))) {
+          return(
+            tibble::tibble(
+              f_m = NA,
+              pval = NA,
+              plot = list(NA)
+            )
+          )
+          }
+        
+        t.test(p62 ~ gender, data = .d) %>% 
+          broom::tidy() %>% 
+          dplyr::select(f_m = estimate, f = estimate1, m = estimate2, pval = p.value ) ->
+          .t
+        
+        .d %>% 
+          ggpubr::ggboxplot(x = "gender", y = "p62",  color = "gender", pallete = "jco", add = "jitter") +
+          ggpubr::stat_compare_means(
+            method = "t.test", 
+            label.x = 1,
+            label.y = max(.d$p62) + 2.5, 
+            aes(label = paste0(.z, ", T-test, p = ", ..p.format..))
+          ) +
+          scale_color_brewer(palette = "Set1") +
+          theme(
+            text = element_text(family = "serif"),
+            
+            panel.background = element_rect(fill = "white", colour = "black", size = 1),
+            axis.title = element_blank(),
+            axis.line = element_blank(),
+            
+            legend.position = "none"
+          ) ->
+          .plot
+        
+        tibble::tibble(
+          f_m = .t$f_m,
+          pval = .t$pval,
+          plot = list(.plot)
+        )
+      }
+    )
+  ) %>% 
+  dplyr::select(cancer_types, p62_gender) %>% 
+  tidyr::unnest() ->
+  p62_gender
+
+
+gridExtra::arrangeGrob(
+  grobs = p62_gender %>% dplyr::filter(pval < 0.05) %>% .$plot, 
+  nrow = 2, bottom = "Gender", left = "p62 protein expression"
+  ) %>% 
+  ggsave(
+    filename = "08-p62-cancer-type-gender.pdf",
+    plot = .,
+    device = "pdf",
+    width = 7,
+    height = 7,
+    path = path_out
+  )
+
+
+
+#
+#
+# end  --------------------------------------------------------------------
