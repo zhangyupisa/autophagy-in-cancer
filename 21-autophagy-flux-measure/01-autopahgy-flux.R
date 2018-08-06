@@ -647,5 +647,60 @@ the_pathway %>%
 
 
 # p62 correlates with autophagy gsva --------------------------------------
+
+# load autophagy gsva score
+readr::read_rds(path = file.path(path_data, "tcga-autophagy-gsva.rds.gz")) %>% 
+  dplyr::mutate(
+    gsva = purrr::map(.x = gsva, .f = function(.x) {dplyr::filter(.x, set == "atg_lys")})
+  ) ->
+  auto_gsva
+
+# p62 protein corr with autophagy gsva
+p62_rppa_expr %>% 
+  dplyr::inner_join(auto_gsva, by = "cancer_types") %>% 
+  dplyr::mutate(
+    p62_auto = purrr::map2(
+      .x = p62,
+      .y = gsva,
+      .f = function(.x, .y) {
+        .x %>% 
+          tidyr::gather(key = "barcode", value = "p62", -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) ->
+          .xx
+        
+        .y %>% 
+          tidyr::gather(key = "barcode", value = "score", -set) %>% 
+          dplyr::select(-set) %>% 
+          dplyr::filter(substr(x = barcode, start = 14, stop = 14) != "1") %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(score = mean(score)) ->
+          .yy
+        
+        .xx %>% dplyr::inner_join(.yy, by = "barcode")
+      }
+    )
+  ) %>% 
+  dplyr::select(1, 4) %>% 
+  dplyr::mutate(
+    corr = purrr::map(.x = p62_auto, .f = function(.x) {
+      cor.test(.x$p62, .x$score, method = "spearman", exact = FALSE) %>% 
+        broom::tidy() %>% 
+        dplyr::select(coef = estimate, pval = p.value)
+    })
+  ) %>% 
+  tidyr::unnest(corr) ->
+  p62_auto
+
+p62_auto %>% dplyr::arrange(coef) %>% print(n = Inf)
+
+
+
+# sqstm1 rmna corr with autophagy gsva
+
+
 # after 02-tcga-autophagy-gsva-score.R save the gsva score data.
 
