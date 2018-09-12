@@ -672,6 +672,7 @@ p62_rppa_expr %>%
           .xx
         
         .y %>% 
+          dplyr::filter(set == "atg_lys") %>% 
           tidyr::gather(key = "barcode", value = "score", -set) %>% 
           dplyr::select(-set) %>% 
           dplyr::filter(substr(x = barcode, start = 14, stop = 14) != "1") %>% 

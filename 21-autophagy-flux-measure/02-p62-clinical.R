@@ -39,7 +39,7 @@ rppa_expr %>%
       })
   ) %>% 
   dplyr::select(-2) ->
-  D
+  p62_rppa_expr
 
 # merge p62 expr with survival data
 clinical %>% 
