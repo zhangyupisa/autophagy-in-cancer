@@ -15,6 +15,8 @@ path_out <- file.path(path_project, "21-autophagy-flux")
 # load data ---------------------------------------------------------------
 tcga_gene_symbol <- readr::read_rds(file.path(path_data, 'tcga-gene-symbol.rds.gz'))
 
+rppa_expr <- readr::read_rds(path = file.path(path_data, "pancan33-rppa-expr-v4-l4.rds.gz")) %>% 
+  dplyr::filter(cancer_types != "PANCAN19")
 
 
 
@@ -53,7 +55,25 @@ gene_sets <- list(
 
 
 
-# GSVA --------------------------------------------------------------------
+# gsva score for tcga data ------------------------------------------------
+
+
+mrna %>% 
+  dplyr::mutate(
+    tumor = purrr::map2_int(
+      .x = cancer_types, 
+      .y = expr,
+      .f = function(.x, .y) {
+        # .x <- .te$cancer_types
+        # .y <- .te$expr[[1]]
+        
+        names(.y)[c(-1, -2)] -> .b
+        .b[as.numeric(substr(.b, start = 14, stop = 15)) < 10] -> .b
+        length(.b)
+      }
+    )
+  ) %>% 
+  print(n = Inf)
 
 library(GSVA)
 
@@ -64,7 +84,7 @@ fn_gsva <- function(.x, .y, gene_sets = gene_sets) {
 
   # extract tumor
   names(.y)[c(-1, -2)] -> .b
-  .b[substr(.b, start = 14, stop = 15) == "01"] -> .b
+  .b[as.numeric(substr(.b, start = 14, stop = 15)) < 10] -> .b
 
   .y %>%
     dplyr::select(2, .b) %>%
@@ -140,7 +160,80 @@ if (!file.exists(file.path(path_data, "tcga-autophagy-gsva.rds.gz"))) {
 }
 
 
+# gsva score distribution -------------------------------------------------
 
 
+
+# p62 correlates with gsva score ------------------------------------------
+rppa_expr %>% 
+  dplyr::mutate(
+    p62 = purrr::map(
+      .x = expr, 
+      .f = function(.x) {
+        .x %>% dplyr::filter(protein == "P62LCKLIGAND") %>% dplyr::select(-1)
+      })
+  ) %>% 
+  dplyr::select(-2) ->
+  p62_rppa_expr
+
+
+gene_set_gsva %>% 
+  dplyr::inner_join(p62_rppa_expr, by = 'cancer_types') %>% 
+  dplyr::mutate(
+    p62_auto = purrr::map2(
+      .x = p62,
+      .y = gsva,
+      .f = function(.x, .y) {
+        .x %>% 
+          tidyr::gather(key = "barcode", value = "p62", -protein) %>% 
+          dplyr::select(-protein) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise(p62 = mean(p62)) ->
+          .xx
+        
+        .y %>% 
+          # dplyr::filter(set == "atg_lys") %>% 
+          tidyr::gather(key = "barcode", value = "score", -set) %>% 
+          tidyr::spread(key = set, value = score) %>% 
+          dplyr::filter(as.numeric(substr(x = barcode, start = 14, stop = 15)) < 10) %>% 
+          dplyr::mutate(barcode = substr(x = barcode, start = 1, stop = 12)) %>% 
+          dplyr::group_by(barcode) %>% 
+          dplyr::summarise_if(.predicate = is.double, .funs = dplyr::funs(mean)) ->
+          .yy
+        
+        .xx %>% dplyr::inner_join(.yy, by = "barcode")
+      }
+    )
+  ) %>% 
+  dplyr::select(1, 4) %>% 
+  dplyr::mutate(
+    corr = purrr::map(
+      .x = p62_auto, 
+      .f = function(.x) {
+        names(gene_sets) %>% 
+          purrr::map(
+            .f = function(.z) {
+              cor.test(.x[['p62']], .x[[.z]], method = "spearman", exact = FALSE) %>% 
+                broom::tidy() %>% 
+                dplyr::select(coef = estimate, pval = p.value)
+            }
+          ) ->
+          .d_corr
+        names(.d_corr) <- names(gene_sets)
+        .d_corr %>% 
+          tibble::enframe() %>% 
+          tidyr::unnest()
+      }
+    )
+  ) %>% 
+  dplyr::select(1,3)  ->
+  corr_p62_auto
+
+corr_p62_auto %>%
+  tidyr::unnest() %>% 
+  dplyr::arrange(coef) %>% 
+  dplyr::filter(pval < 0.05) %>% 
+  print(n = Inf)
 
 # End ---------------------------------------------------------------------
